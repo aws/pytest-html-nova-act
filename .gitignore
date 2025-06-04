@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+# Environments
+.venv/
+env/
+venv/
+venv_*/
+ENV/
+env.bak/
+.DS_Store*
