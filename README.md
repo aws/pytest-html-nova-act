@@ -41,7 +41,7 @@ from nova_act import NovaAct, BOOL_SCHEMA
 @pytest.fixture()
 def nova_session():
     nova = NovaAct(
-        starting_page="https://amazon.com",
+        starting_page="https://nova.amazon.com/act",
         headless=True
     )
     nova.start()
@@ -49,9 +49,9 @@ def nova_session():
     nova.stop()
 
 def test_example(nova_session):
-    nova_session.act("Search for a coffee maker")
+    nova_session.act("Click learn more")
     expected = True
-    result = nova_session.act("Am I on the coffee maker search results page?", schema=BOOL_SCHEMA)
+    result = nova_session.act("Am I on the Amazon AGI Labs page?", schema=BOOL_SCHEMA)
     actual = result.matches_schema and result.parsed_response
     assert expected == actual
 ```
