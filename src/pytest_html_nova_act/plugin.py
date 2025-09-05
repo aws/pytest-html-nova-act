@@ -11,9 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import uuid
 import re
+import html
+from pathlib import Path
 
 
 def pytest_addoption(parser):
@@ -26,6 +27,7 @@ def pytest_addoption(parser):
         help="Enable adding expandable links to the pytest-html report.",
     )
 
+
 def pytest_configure(config):
     """
     Configure pytest with the Nova Act Report plugin.
@@ -35,7 +37,10 @@ def pytest_configure(config):
     """
     if config.getoption("add_nova_act_report"):
         config._plugin_add_nova_act_report = PytestHtmlNovaActPlugin(config)
-        config.pluginmanager.register(config._plugin_add_nova_act_report, "pytest_html_nova_act_plugin")
+        config.pluginmanager.register(
+            config._plugin_add_nova_act_report, "pytest_html_nova_act_plugin"
+        )
+
 
 def pytest_unconfigure(config):
     """
@@ -44,7 +49,7 @@ def pytest_unconfigure(config):
     This function removes the PytestHtmlNovaActPlugin instance from the config
     and unregisters it from the plugin manager when pytest is shutting down.
     """
-    plugin_add_nova_act_report = getattr(config, '_plugin_add_nova_act_report', None)
+    plugin_add_nova_act_report = getattr(config, "_plugin_add_nova_act_report", None)
     if plugin_add_nova_act_report:
         del config._plugin_add_nova_act_report
         config.pluginmanager.unregister(plugin_add_nova_act_report)
@@ -78,7 +83,9 @@ class PytestHtmlNovaActPlugin:
         if self.add_nova_act_links_enabled:
             files = self._extract_report_links(data)
             html_blob = self._create_expandable_html_div(files)
-            data.insert(0, html_blob) # Use pytest_html.extras.html for proper integration
+            data.insert(
+                0, html_blob
+            )  # Use pytest_html.extras.html for proper integration
 
     def _extract_report_links(self, data):
         """
@@ -96,7 +103,9 @@ class PytestHtmlNovaActPlugin:
         for line in data:
             matches = re.findall(r"View your act run here: (.*?\.html)", line)
             if matches:
-                report_links.extend(matches)
+                # Decode HTML entities in file paths (e.g., &#x27; -> ')
+                decoded_matches = [html.unescape(match) for match in matches]
+                report_links.extend(decoded_matches)
         return report_links
 
     def _create_expandable_html_div(self, files):
@@ -110,74 +119,74 @@ class PytestHtmlNovaActPlugin:
         Returns:
             A string containing the HTML div structure with CSS.
         """
-        html_div = f"""
+        html_div = """
         <div class='combined-reports'>
             <style>
     
-                .combined-reports {{
+                .combined-reports {
                     white-space: normal;
-                }}
+                }
     
-                .accordion-item {{
+                .accordion-item {
                     margin-bottom: 2px;
                     white-space: normal;
-                }}
+                }
     
-                .accordion-item label {{
+                .accordion-item label {
                     color: #444;
                     cursor: pointer;
                     padding: 3px;
                     width: 100%;
                     display: block;
                     text-align: left;
-                }}
+                }
     
-                .accordion-item label:hover {{
+                .accordion-item label:hover {
                     background-color: #ccc;
-                }}
+                }
     
-                .accordion-content {{
+                .accordion-content {
                     padding: 0 3px;
                     background-color: #f1f1f1;
                     overflow: hidden;
                     max-height: 0;
                     transition: max-height 0.3s ease-out;
-                }}
+                }
     
                 /* Show content when the checkbox is checked */
-                .accordion-item input[type="checkbox"]:checked + label + .accordion-content {{
+                .accordion-item input[type="checkbox"]:checked + label + .accordion-content {
                     max-height: fit-content; /* Let content determine the height */
                     transition: max-height 0.2s ease-in;
-                }}
+                }
     
                 /* Hide the checkbox */
-                .accordion-item input[type="checkbox"] {{
+                .accordion-item input[type="checkbox"] {
                     display: none;
-                }}
+                }
     
-                .embedded-html {{
+                .embedded-html {
                     white-space: normal;
                     width: 100%;
                     height: auto;
                     border: 1px solid #ddd;
                     margin-bottom: 2px;
                     padding: 3px; /* Add some padding inside the embedded HTML */
-                }}
+                }
     
                 /* Counter the white-space: pre-wrap for list items within embedded HTML */
                 .embedded-html ul,
                 .embedded-html ol,
-                .embedded-html li {{
+                .embedded-html li {
                     white-space: normal;
-                }}
+                }
     
             </style>
         """
         for i, html_file_path in enumerate(files):
             try:
-                with open(html_file_path, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
-                file_name = os.path.basename(html_file_path)
+                file_path = Path(html_file_path)
+                html_content = file_path.read_text(encoding="utf-8")
+                file_name = file_path.name
                 checkbox_id = f"accordion-toggle-{uuid.uuid4()}"
                 html_div += f"""
                 <div class="accordion-item">
