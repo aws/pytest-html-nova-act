@@ -11,11 +11,11 @@ name = "pytest-html-nova-act"
 description = "A Pytest Plugin for Amazon Nova Act Python SDK."
 requires-python = ">=3.10"
 authors = [
-  {name = "Pytest Html Pluging for Amazon Nova Act", email="nova-act@amazon.com"},
+  { name = "Pytest Html Plugin for Amazon Nova Act", email = "nova-act@amazon.com" },
 ]
 license = "Apache-2.0"
 readme = "README.md"
-version = "1.0.0"
+version = "1.0.1"
 
 [project.entry-points.pytest11]
 pytest_html_nova_act = "pytest_html_nova_act.plugin"
