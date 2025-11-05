@@ -50,3 +50,9 @@
   border-top: 1px solid #ddd;
   border-radius: 0 0 8px 8px;
 }
+
+.accordion-content iframe {
+  width: 100%;
+  border: none;
+  display: block;
+}
