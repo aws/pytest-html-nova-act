@@ -168,3 +168,19 @@ class PytestHtmlNovaActPlugin:
         except Exception as e:
             return f"<p style='color: red;'>Error reading file {html.escape(html_file_path)}: {html.escape(str(e))}</p>"
 
+    def pytest_html_results_summary(self, prefix: list[str], summary: list[str], postfix: list[str]) -> None:
+        """
+        Pytest HTML hook called once before report generation.
+        Appends JavaScript into the report HTML for layout adjustments to the embedded Nova Act Action Viewer HTML.
+
+        Args:
+            prefix: List of HTML strings to prepend to summary
+            summary: List of HTML strings for summary content
+            postfix: List of HTML strings to append to summary
+        """
+        if not self.add_nova_act_links_enabled:
+            return
+        
+        js_file = Path(__file__).parent / "static" / "nova_act_accordion.js"
+        js_content = js_file.read_text(encoding="utf-8")
+        postfix.append(f"<script>{js_content}</script>")

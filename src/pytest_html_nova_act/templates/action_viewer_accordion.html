@@ -2,6 +2,6 @@
     <input type='checkbox' id='{{ checkbox_id }}'>
     <label for='{{ checkbox_id }}'>{{ file_name }}</label>
     <div class='accordion-content'>
-        {{ action_viewer_html | safe }}
+        <iframe srcdoc='{{ action_viewer_html | e }}' sandbox='allow-same-origin'></iframe>
     </div>
 </div>
