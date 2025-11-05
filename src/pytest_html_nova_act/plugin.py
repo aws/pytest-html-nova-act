@@ -11,13 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import uuid
 import re
 import html
 from pathlib import Path
+import pytest
+import warnings
+import jinja2
+
+PLUGIN_ATTR_NAME = "_plugin_add_nova_act_report"
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: pytest.Parser) -> None:
     """Command-line options for pytest-html-nova-act."""
     group = parser.getgroup("terminal reporting")
     group.addoption(
@@ -28,42 +34,55 @@ def pytest_addoption(parser):
     )
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
     """
-    Configure pytest with the Nova Act Report plugin.
+    Configure pytest with the Nova Act plugin.
 
     This function initializes and registers the PytestHtmlNovaActPlugin if the
     'add_nova_act_report' option is enabled in the pytest configuration.
     """
     if config.getoption("add_nova_act_report"):
-        config._plugin_add_nova_act_report = PytestHtmlNovaActPlugin(config)
-        config.pluginmanager.register(
-            config._plugin_add_nova_act_report, "pytest_html_nova_act_plugin"
+        # Suppress Nova Act keyboard event watcher warnings - Nova Act tries to monitor
+        # keyboard input via a background thread, but pytest redirects stdin to a pseudofile
+        # that doesn't support fileno(). This causes harmless threading exceptions that don't
+        # affect Nova Act functionality or test execution.
+        warnings.filterwarnings(
+            "ignore", category=pytest.PytestUnhandledThreadExceptionWarning
         )
+        
+        # Configure with CSS for embedded Nova Act Action Viewer HTML
+        css_file = Path(__file__).parent / "static" / "nova_act_styles.css"
+        if not hasattr(config.option, 'css'):
+            config.option.css = []
+        config.option.css.append(str(css_file))
+
+        plugin = PytestHtmlNovaActPlugin(config)
+        setattr(config, PLUGIN_ATTR_NAME, plugin)
+        config.pluginmanager.register(plugin, "pytest_html_nova_act_plugin")
 
 
-def pytest_unconfigure(config):
+def pytest_unconfigure(config: pytest.Config) -> None:
     """
-    Unconfigure pytest by cleaning up the Nova Act Report plugin.
+    Unconfigure pytest by cleaning up the Nova Act plugin.
 
     This function removes the PytestHtmlNovaActPlugin instance from the config
     and unregisters it from the plugin manager when pytest is shutting down.
     """
-    plugin_add_nova_act_report = getattr(config, "_plugin_add_nova_act_report", None)
-    if plugin_add_nova_act_report:
-        del config._plugin_add_nova_act_report
-        config.pluginmanager.unregister(plugin_add_nova_act_report)
+    plugin = getattr(config, PLUGIN_ATTR_NAME, None)
+    if plugin:
+        delattr(config, PLUGIN_ATTR_NAME)
+        config.pluginmanager.unregister(plugin)
 
 
 class PytestHtmlNovaActPlugin:
     """
-    A pytest plugin that adds expandable HTML report links to the pytest-html report.
+    A pytest plugin that adds expandable Nova Act Action Viewer HTML to the pytest-html report.
 
-    This plugin looks for Act workflow report links in test output and embeds them
+    This plugin looks for Action Viewer HTML file paths in test output and embeds them
     as expandable sections in the pytest-html report.
     """
 
-    def __init__(self, config):
+    def __init__(self, config: pytest.Config) -> None:
         """
         Initialize the plugin.
 
@@ -72,139 +91,80 @@ class PytestHtmlNovaActPlugin:
         """
         self.add_nova_act_links_enabled = config.getoption("--add-nova-act-report")
 
-    def pytest_html_results_table_html(self, report, data):
+        if self.add_nova_act_links_enabled:
+            # Load Jinja templates
+            html_template_dir = Path(__file__).parent / "templates"
+            env = jinja2.Environment(loader=jinja2.FileSystemLoader(html_template_dir))
+            self.action_viewer_item_template = env.get_template("action_viewer_accordion.html")
+
+    def pytest_html_results_table_html(
+        self, report: pytest.TestReport, data: list[str]
+    ) -> None:
         """
-        Hook implementation that modifies the HTML results table.
+        Pytest HTML hook called for each test.
+        Modifies the report result HTML by embedding the Nova Act Action Viewer HTML files.
 
         Args:
-            report: The pytest report object
+            report: The pytest report object (unused)
             data: List containing the HTML data to be modified
         """
         if self.add_nova_act_links_enabled:
-            files = self._extract_report_links(data)
-            html_blob = self._create_expandable_html_div(files)
-            data.insert(
-                0, html_blob
-            )  # Use pytest_html.extras.html for proper integration
+            self._insert_action_viewer_html(data)
 
-    def _extract_report_links(self, data):
+    def _insert_action_viewer_html(self, data: list[str]) -> None:
         """
-        Parses a list of strings to find and extract all report links (multiple per line supported).
+        Finds Nova Act Action Viewer file paths and adds accordions after them.
 
         Args:
-            data: A list of strings, where multiple report links might exist on a single line.
-
-        Returns:
-            A list of strings, where each string is a report link found.
-            Returns an empty list if no report links are found.
+            data: List of HTML strings
         """
+        for i, logs in enumerate(data):
+            initial_log_lines = logs.split("\n")
+            modified_log_lines = []
+            found_action_viewer_html_paths = False
 
-        report_links = []
-        for line in data:
-            matches = re.findall(r"View your act run here: (.*?\.html)", line)
-            if matches:
-                # Decode HTML entities in file paths (e.g., &#x27; -> ')
-                decoded_matches = [html.unescape(match) for match in matches]
-                report_links.extend(decoded_matches)
-        return report_links
+            for log in initial_log_lines:
+                modified_log_lines.append(log)
+                action_viewer_html_paths = re.findall(
+                    r"View your act run here: (.*?\.html)", log
+                )
+                if action_viewer_html_paths:
+                    found_action_viewer_html_paths = True
+                    for file_path in action_viewer_html_paths:
+                        decoded_file_path = html.unescape(file_path)
+                        action_viewer_html = self._generate_action_viewer_accordion_html(
+                            decoded_file_path
+                        )
+                        modified_log_lines.append("")
+                        modified_log_lines.append(action_viewer_html)
 
-    def _create_expandable_html_div(self, files):
+            if found_action_viewer_html_paths:
+                data[i] = "\n".join(modified_log_lines)
+
+    def _generate_action_viewer_accordion_html(self, html_file_path: str) -> str:
         """
-        Creates an HTML div with an expandable section for each HTML file
-        using pure CSS and HTML.
+        Reads the Action Viewer HTML file and populates the HTML template with it
 
         Args:
-            files: A list of full paths to .html files.
+            html_file_path: Full path to the .html file.
 
         Returns:
-            A string containing the HTML div structure with CSS.
+            An HTML string for the Action Viewer accordion.
         """
-        html_div = """
-        <div class='combined-reports'>
-            <style>
-    
-                .combined-reports {
-                    white-space: normal;
-                }
-    
-                .accordion-item {
-                    margin-bottom: 2px;
-                    white-space: normal;
-                }
-    
-                .accordion-item label {
-                    color: #444;
-                    cursor: pointer;
-                    padding: 3px;
-                    width: 100%;
-                    display: block;
-                    text-align: left;
-                }
-    
-                .accordion-item label:hover {
-                    background-color: #ccc;
-                }
-    
-                .accordion-content {
-                    padding: 0 3px;
-                    background-color: #f1f1f1;
-                    overflow: hidden;
-                    max-height: 0;
-                    transition: max-height 0.3s ease-out;
-                }
-    
-                /* Show content when the checkbox is checked */
-                .accordion-item input[type="checkbox"]:checked + label + .accordion-content {
-                    max-height: fit-content; /* Let content determine the height */
-                    transition: max-height 0.2s ease-in;
-                }
-    
-                /* Hide the checkbox */
-                .accordion-item input[type="checkbox"] {
-                    display: none;
-                }
-    
-                .embedded-html {
-                    white-space: normal;
-                    width: 100%;
-                    height: auto;
-                    border: 1px solid #ddd;
-                    margin-bottom: 2px;
-                    padding: 3px; /* Add some padding inside the embedded HTML */
-                }
-    
-                /* Counter the white-space: pre-wrap for list items within embedded HTML */
-                .embedded-html ul,
-                .embedded-html ol,
-                .embedded-html li {
-                    white-space: normal;
-                }
-    
-            </style>
-        """
-        for i, html_file_path in enumerate(files):
-            try:
-                file_path = Path(html_file_path)
-                html_content = file_path.read_text(encoding="utf-8")
-                file_name = file_path.name
-                checkbox_id = f"accordion-toggle-{uuid.uuid4()}"
-                html_div += f"""
-                <div class="accordion-item">
-                    <input type="checkbox" id="{checkbox_id}">
-                    <label for="{checkbox_id}"> {">>> "}Click to Expand Act Workflow Viewer for file {file_name}</label>
-                    <div class="accordion-content">
-                        <div class="embedded-html">
-                            {html_content}
-                        </div>
-                    </div>
-                </div>
-                """
-            except FileNotFoundError:
-                html_div += f"<p style='color: red;'>Error: File not found - {html_file_path}</p>"
-            except Exception as e:
-                html_div += f"<p style='color: red;'>Error reading file {html_file_path}: {e}</p>"
-        html_div += """
-        </div>
-        """
+        try:
+            file_path = Path(html_file_path)
+            action_viewer_html = file_path.read_text(encoding="utf-8")
+            file_name = html.escape(file_path.name)
+            checkbox_id = f"accordion-toggle-{uuid.uuid4()}"
 
-        return html_div
+            return self.action_viewer_item_template.render(
+                checkbox_id=checkbox_id,
+                file_name=file_name,
+                action_viewer_html=action_viewer_html,
+            )
+
+        except FileNotFoundError:
+            return f"<p style='color: red;'>Error: Action Viewer HTML file not found at {html.escape(html_file_path)}</p>"
+        except Exception as e:
+            return f"<p style='color: red;'>Error reading file {html.escape(html_file_path)}: {html.escape(str(e))}</p>"
+

@@ -27,3 +27,9 @@ dev = [
   "twine",
   "wheel",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pytest_html_nova_act = ["templates/*.html", "static/*.css", "static/*.js"]
