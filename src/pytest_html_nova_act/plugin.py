@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import uuid
-import re
 import html
-from pathlib import Path
-import pytest
+import re
+import uuid
 import warnings
+from pathlib import Path
+
 import jinja2
+import pytest
 
 PLUGIN_ATTR_NAME = "_plugin_add_nova_act_report"
 
@@ -49,12 +50,6 @@ def pytest_configure(config: pytest.Config) -> None:
         warnings.filterwarnings(
             "ignore", category=pytest.PytestUnhandledThreadExceptionWarning
         )
-        
-        # Configure with CSS for embedded Nova Act Action Viewer HTML
-        css_file = Path(__file__).parent / "static" / "nova_act_styles.css"
-        if not hasattr(config.option, 'css'):
-            config.option.css = []
-        config.option.css.append(str(css_file))
 
         plugin = PytestHtmlNovaActPlugin(config)
         setattr(config, PLUGIN_ATTR_NAME, plugin)
@@ -95,7 +90,9 @@ class PytestHtmlNovaActPlugin:
             # Load Jinja templates
             html_template_dir = Path(__file__).parent / "templates"
             env = jinja2.Environment(loader=jinja2.FileSystemLoader(html_template_dir))
-            self.action_viewer_item_template = env.get_template("action_viewer_accordion.html")
+            self.action_viewer_item_template = env.get_template(
+                "action_viewer_accordion.html"
+            )
 
     def pytest_html_results_table_html(
         self, report: pytest.TestReport, data: list[str]
@@ -132,8 +129,10 @@ class PytestHtmlNovaActPlugin:
                     found_action_viewer_html_paths = True
                     for file_path in action_viewer_html_paths:
                         decoded_file_path = html.unescape(file_path)
-                        action_viewer_html = self._generate_action_viewer_accordion_html(
-                            decoded_file_path
+                        action_viewer_html = (
+                            self._generate_action_viewer_accordion_html(
+                                decoded_file_path
+                            )
                         )
                         modified_log_lines.append("")
                         modified_log_lines.append(action_viewer_html)
@@ -168,7 +167,9 @@ class PytestHtmlNovaActPlugin:
         except Exception as e:
             return f"<p style='color: red;'>Error reading file {html.escape(html_file_path)}: {html.escape(str(e))}</p>"
 
-    def pytest_html_results_summary(self, prefix: list[str], summary: list[str], postfix: list[str]) -> None:
+    def pytest_html_results_summary(
+        self, prefix: list[str], summary: list[str], postfix: list[str]
+    ) -> None:
         """
         Pytest HTML hook called once before report generation.
         Appends JavaScript into the report HTML for layout adjustments to the embedded Nova Act Action Viewer HTML.
@@ -180,7 +181,11 @@ class PytestHtmlNovaActPlugin:
         """
         if not self.add_nova_act_links_enabled:
             return
-        
-        js_file = Path(__file__).parent / "static" / "nova_act_accordion.js"
-        js_content = js_file.read_text(encoding="utf-8")
-        postfix.append(f"<script>{js_content}</script>")
+
+        static_dir = Path(__file__).parent / "static"
+        for filename, tag in [
+            ("nova_act_styles.css", "style"),
+            ("nova_act_accordion.js", "script"),
+        ]:
+            content = (static_dir / filename).read_text(encoding="utf-8")
+            postfix.append(f"<{tag}>{content}</{tag}>")
