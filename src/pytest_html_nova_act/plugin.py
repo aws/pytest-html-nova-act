@@ -89,7 +89,11 @@ class PytestHtmlNovaActPlugin:
         if self.add_nova_act_links_enabled:
             # Load Jinja templates
             html_template_dir = Path(__file__).parent / "templates"
-            env = jinja2.Environment(loader=jinja2.FileSystemLoader(html_template_dir))
+            # Enable autoescaping for HTML/XML templates to mitigate XSS (Bandit B701).
+            env = jinja2.Environment(
+                loader=jinja2.FileSystemLoader(html_template_dir),
+                autoescape=jinja2.select_autoescape(["html", "xml"]),
+            )
             self.action_viewer_item_template = env.get_template(
                 "action_viewer_accordion.html"
             )
@@ -153,7 +157,9 @@ class PytestHtmlNovaActPlugin:
         try:
             file_path = Path(html_file_path)
             action_viewer_html = file_path.read_text(encoding="utf-8")
-            file_name = html.escape(file_path.name)
+            # Jinja2 autoescape (enabled on the environment) escapes this in the template;
+            # escaping here too would double-escape the filename.
+            file_name = file_path.name
             checkbox_id = f"accordion-toggle-{uuid.uuid4()}"
 
             return self.action_viewer_item_template.render(
