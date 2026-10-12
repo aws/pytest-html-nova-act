@@ -20,6 +20,7 @@ from pathlib import Path
 
 import jinja2
 import pytest
+from jinja2 import select_autoescape
 
 PLUGIN_ATTR_NAME = "_plugin_add_nova_act_report"
 
@@ -90,9 +91,11 @@ class PytestHtmlNovaActPlugin:
             # Load Jinja templates
             html_template_dir = Path(__file__).parent / "templates"
             # Enable autoescaping for HTML/XML templates to mitigate XSS (Bandit B701).
+            # Call select_autoescape by its bare name: older Bandit B701 checks only
+            # recognize a bare-name call, not jinja2.select_autoescape(...).
             env = jinja2.Environment(
                 loader=jinja2.FileSystemLoader(html_template_dir),
-                autoescape=jinja2.select_autoescape(["html", "xml"]),
+                autoescape=select_autoescape(["html", "xml"]),
             )
             self.action_viewer_item_template = env.get_template(
                 "action_viewer_accordion.html"
